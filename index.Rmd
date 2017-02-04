@@ -7,24 +7,48 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+library(caret); library(rattle); library(rpart); library(rpart.plot)
+library(randomForest); library(repmis)
 ```
 
 ## R Markdown
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
-
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
-
 ```{r cars}
-summary(cars)
+download.file('https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv','pml-training.csv' )
+training <- read.csv('pml-training.csv')
+training <- training[, -c(1:7)]
+
+trainingNullRatio <- colSums(is.na(training)) / nrow(training)
+trainingNok <- trainingNullRatio[trainingNullRatio >= 0.1]
+length(trainingNok)
+trainingOk <- trainingNullRatio[trainingNullRatio < 0.1]
+length(trainingOk)
+
+training <- training[, colSums(is.na(training)) == 0]
+toRemove <- names(training) %in% c("new_window", "kurtosis_roll_belt", "kurtosis_picth_belt", "kurtosis_yaw_belt", "skewness_roll_belt", "skewness_roll_belt.1", "skewness_yaw_belt", "max_yaw_belt", "min_yaw_belt", "amplitude_yaw_belt", "avg_roll_arm", "stddev_roll_arm", "var_roll_arm", "avg_pitch_arm", "stddev_pitch_arm", "var_pitch_arm", "avg_yaw_arm", "stddev_yaw_arm", "var_yaw_arm", "kurtosis_roll_arm", "kurtosis_picth_arm", "kurtosis_yaw_arm", "skewness_roll_arm", "skewness_pitch_arm", "skewness_yaw_arm", "max_roll_arm", "min_roll_arm", "min_pitch_arm", "amplitude_roll_arm", "amplitude_pitch_arm", "kurtosis_roll_dumbbell", "kurtosis_picth_dumbbell", "kurtosis_yaw_dumbbell", "skewness_roll_dumbbell", "skewness_pitch_dumbbell", "skewness_yaw_dumbbell", "max_yaw_dumbbell", "min_yaw_dumbbell", "amplitude_yaw_dumbbell", "kurtosis_roll_forearm", "kurtosis_picth_forearm", "kurtosis_yaw_forearm", "skewness_roll_forearm", "skewness_pitch_forearm", "skewness_yaw_forearm", "max_roll_forearm", "max_yaw_forearm", "min_roll_forearm", "min_yaw_forearm", "amplitude_roll_forearm", "amplitude_yaw_forearm", "avg_roll_forearm", "stddev_roll_forearm", "var_roll_forearm", "avg_pitch_forearm", "stddev_pitch_forearm", "var_pitch_forearm", "avg_yaw_forearm", "stddev_yaw_forearm", "var_yaw_forearm")
+training <- training[!toRemove]
+
+download.file('https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv','pml-testing.csv')
+testing <- read.csv('pml-testing.csv')
+testing <- testing[, colSums(is.na(testing)) == 0]
+
+set.seed(2531) 
+inTrain <- createDataPartition(training$classe, 5)
 ```
 
-## Including Plots
+# Classification Tree
+```{r}
+library(parallel)
+library(doParallel)
+cluster <- makeCluster(detectCores() - 1) # convention to leave 1 core for OS
+registerDoParallel(cluster)
 
-You can also embed plots, for example:
+control <- trainControl(method = "cv", number = 5)
+fit_rpart <- train(classe ~ ., data = training[inTrain$Resample1,], method = "rpart", trControl = control)
+print(fit_rpart, digits = 4)
 
-```{r pressure, echo=FALSE}
-plot(pressure)
+stopCluster(cluster)
+registerDoSEQ()
+
+print(fit_rpart, digits = 4)
 ```
-
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
