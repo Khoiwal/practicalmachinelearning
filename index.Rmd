@@ -8,7 +8,7 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(caret); library(rattle); library(rpart); library(rpart.plot)
-library(randomForest); library(repmis)
+library(randomForest); library(repmis);require(corrplot)
 ```
 
 # Prediction Assignment
@@ -37,7 +37,7 @@ testing <- read.csv('pml-testing.csv',
 
 ### Choosing Columns
 
-The first step is top limit our analysis to the variables that are related with the sensors. Initially we have 153 variables and the output variable "classe".
+The first step is to limit our analysis to the variables that are related with the sensors. Initially we have 153 variables and the output variable "classe".
 
 ```{r}
 sensorColumns <- grepl("classe|belt|arm|dumbell", names(training))
@@ -45,7 +45,7 @@ training <- training[,sensorColumns]
 testing <- testing[,sensorColumns]
 ```
 
-All columns that contains NA/null have more than 97% of NA/null values so we will remove these columns from the data frame.
+All columns that have at leat one NA/null, have more than 97% of NA/null values. In this case it does not make any sense to try to "guess", or round the missing values. Thus, we will remove these columns from the data frame.
 
 ```{r}
 unique(colSums(is.na(training)) / nrow(training))
@@ -59,8 +59,20 @@ All chosen variables also pass the nearZeroVar test.
 nearZeroVar(training, saveMetrics = TRUE)
 ```
 
+Ideally we should have a lot of uncorrelated variables. The following graph show that the correlation level is not so high, so we can, indeed, proceed with the chosen set of variables, we do NOT need to do a feature extraction with PCA, for example.
+
+```{r}
+corrplot.mixed(cor(training[,c(1:39)]), lower="circle", upper="color", 
+               tl.pos="lt", diag="n", order="hclust",
+               hclust.method="complete")
+```
+
 ## Prediction Model
 ### Classification Tree
+
+To create and avaliate the Classification Tree we will use a 70-30 split of the training model. This will allows us to calculate the out-of-the-sample accuracy of the model before we test the model on "real" data.
+
+The model is created used the caret package with the random forest method with 5-k fold cross validation.
 
 ```{r}
 set.seed(8256)
