@@ -11,44 +11,102 @@ library(caret); library(rattle); library(rpart); library(rpart.plot)
 library(randomForest); library(repmis)
 ```
 
-## R Markdown
+# Prediction Assignment
+## Background 
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+## Preparing the data
+
+### Downloading and loading data
 
 ```{r cars}
 download.file('https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv','pml-training.csv' )
-training <- read.csv('pml-training.csv')
-training <- training[, -c(1:7)]
-
-trainingNullRatio <- colSums(is.na(training)) / nrow(training)
-trainingNok <- trainingNullRatio[trainingNullRatio >= 0.1]
-length(trainingNok)
-trainingOk <- trainingNullRatio[trainingNullRatio < 0.1]
-length(trainingOk)
-
-training <- training[, colSums(is.na(training)) == 0]
-toRemove <- names(training) %in% c("new_window", "kurtosis_roll_belt", "kurtosis_picth_belt", "kurtosis_yaw_belt", "skewness_roll_belt", "skewness_roll_belt.1", "skewness_yaw_belt", "max_yaw_belt", "min_yaw_belt", "amplitude_yaw_belt", "avg_roll_arm", "stddev_roll_arm", "var_roll_arm", "avg_pitch_arm", "stddev_pitch_arm", "var_pitch_arm", "avg_yaw_arm", "stddev_yaw_arm", "var_yaw_arm", "kurtosis_roll_arm", "kurtosis_picth_arm", "kurtosis_yaw_arm", "skewness_roll_arm", "skewness_pitch_arm", "skewness_yaw_arm", "max_roll_arm", "min_roll_arm", "min_pitch_arm", "amplitude_roll_arm", "amplitude_pitch_arm", "kurtosis_roll_dumbbell", "kurtosis_picth_dumbbell", "kurtosis_yaw_dumbbell", "skewness_roll_dumbbell", "skewness_pitch_dumbbell", "skewness_yaw_dumbbell", "max_yaw_dumbbell", "min_yaw_dumbbell", "amplitude_yaw_dumbbell", "kurtosis_roll_forearm", "kurtosis_picth_forearm", "kurtosis_yaw_forearm", "skewness_roll_forearm", "skewness_pitch_forearm", "skewness_yaw_forearm", "max_roll_forearm", "max_yaw_forearm", "min_roll_forearm", "min_yaw_forearm", "amplitude_roll_forearm", "amplitude_yaw_forearm", "avg_roll_forearm", "stddev_roll_forearm", "var_roll_forearm", "avg_pitch_forearm", "stddev_pitch_forearm", "var_pitch_forearm", "avg_yaw_forearm", "stddev_yaw_forearm", "var_yaw_forearm")
-training <- training[!toRemove]
-
 download.file('https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv','pml-testing.csv')
-testing <- read.csv('pml-testing.csv')
-testing <- testing[, colSums(is.na(testing)) == 0]
 
-set.seed(2531) 
-inTrain <- createDataPartition(training$classe, 5)
+training <- read.csv('pml-training.csv',
+                     header = TRUE,
+                     sep = ",",
+                     na.strings = c("NA", "#DIV/0!"))
+
+testing <- read.csv('pml-testing.csv',
+                     header = TRUE,
+                     sep = ",",
+                     na.strings = c("NA", "#DIV/0!"))
 ```
 
-# Classification Tree
+### Choosing Columns
+
+The first step is top limit our analysis to the variables that are related with the sensors. Initially we have 153 variables and the output variable "classe".
+
 ```{r}
+sensorColumns <- grepl("classe|belt|arm|dumbell", names(training))
+training <- training[,sensorColumns]
+testing <- testing[,sensorColumns]
+```
+
+All columns that contains NA/null have more than 97% of NA/null values so we will remove these columns from the data frame.
+
+```{r}
+unique(colSums(is.na(training)) / nrow(training))
+cols.without.na = colSums(is.na(training)) == 0
+training <- training[, cols.without.na]
+```
+
+All chosen variables also pass the nearZeroVar test. 
+
+```{r}
+nearZeroVar(training, saveMetrics = TRUE)
+```
+
+## Prediction Model
+### Classification Tree
+
+```{r}
+set.seed(8256)
+
+inTraining <- createDataPartition(training$classe, p=0.7, list=F)
+trainingTr <- training[inTraining,]
+trainingTe <- training[-inTraining,]
+
+# Enable Parallel processing
 library(parallel)
 library(doParallel)
 cluster <- makeCluster(detectCores() - 1) # convention to leave 1 core for OS
 registerDoParallel(cluster)
 
-control <- trainControl(method = "cv", number = 5)
-fit_rpart <- train(classe ~ ., data = training[inTrain$Resample1,], method = "rpart", trControl = control)
-print(fit_rpart, digits = 4)
+control <- trainControl(method = "cv", number = 5, allowParallel = TRUE)
+rfModel <- train(classe ~ ., data = trainingTr, method = "rf", trControl = control)
 
+# Disable Parallel processing
 stopCluster(cluster)
 registerDoSEQ()
+```
 
-print(fit_rpart, digits = 4)
+### Analysis of the Model
+
+```{r}
+print(rfModel, digits = 4)
+```
+
+```{r}
+pred <- predict(rfModel, newdata = trainingTe)
+ootsAccuracy <- sum(pred == trainingTe$classe) / length(pred)
+confusionMatrix(trainingTe$classe, pred)$table
+```
+
+The chosen model have in-the-sample accuracy of `r max(rfModel$results$Accuracy)` and out-of-the-sample accuracy of `r ootsAccuracy`
+
+In this case the 20 most important variables of the model are:
+```{r}
+varImp(rfModel)
+```
+
+# Final Prediction
+
+Using the chosen model in the test dataset we arrive have the following 20 predictions:
+
+```{r}
+pred <- predict(rfModel, newdata = testing)
+print(pred)
 ```
