@@ -2,7 +2,7 @@
 title: "Prediction Assignment Writeup"
 author: "Daniel Frederico Lins Leite"
 date: "4 February 2017"
-output: html_document
+output: md_document
 ---
 
 ```{r setup, include=FALSE}
